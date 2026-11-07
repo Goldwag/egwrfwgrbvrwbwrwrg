@@ -1,0 +1,60 @@
+diff -ru orig/src/3ds/launcher.c /home/claude/work/src/3ds/launcher.c
+--- orig/src/3ds/launcher.c	2026-11-06 21:22:56.000000000 -0800
++++ /home/claude/work/src/3ds/launcher.c	2026-11-07 12:18:23.503343445 -0800
+@@ -479,6 +479,7 @@
+                               bool touched, int touchX, int touchY,
+                               int gameW, int gameH) {
+     if (!mouse) return;
++    mouse->touchOnly = true;
+     if (touched) {
+         // 3DS bottom screen is 320x240. Scale to game logical size so that
+         // mouse_x/mouse_y match what the game expects in room space. If gameW/H
+diff -ru orig/src/runner.c /home/claude/work/src/runner.c
+--- orig/src/runner.c	2026-11-07 01:52:08.000000000 -0800
++++ /home/claude/work/src/runner.c	2026-11-07 12:18:23.504558663 -0800
+@@ -2822,10 +2822,21 @@
+ }
+ 
+ 
++// A touchscreen has no hover: the pointer only exists while the stylus/finger
++// is down and on the frame it lifts (so Left Released still fires). On the next
++// frame it is gone, which lets Mouse Leave fire instead of leaving the
++// instance stuck in its hovered state forever.
++static bool Runner_pointerActive(Runner* runner) {
++    RunnerMouseState* m = runner->mouse;
++    if (m == nullptr || !m->positionValid) return false;
++    if (!m->touchOnly) return true;
++    return m->buttonDown[MB_LEFT] || m->buttonReleased[MB_LEFT];
++}
++
+ // Test the current mouse position against an instance's collision mask.
+ static bool Runner_mouseHitsInstance(Runner* runner, Instance* inst) {
+     if (runner == nullptr || runner->mouse == nullptr ||
+-        !runner->mouse->positionValid || inst == nullptr || !inst->active) {
++        !Runner_pointerActive(runner) || inst == nullptr || !inst->active) {
+         return false;
+     }
+ 
+@@ -2847,8 +2858,7 @@
+ // Dispatch the instance mouse events used by Matchmakers:
+ // Left Released (7), Mouse Enter (10), and Mouse Leave (11).
+ static void Runner_dispatchMouseEvents(Runner* runner) {
+-    if (runner == nullptr || runner->mouse == nullptr ||
+-        !runner->mouse->positionValid) {
++    if (runner == nullptr || runner->mouse == nullptr) {
+         return;
+     }
+ 
+diff -ru orig/src/runner_mouse.h /home/claude/work/src/runner_mouse.h
+--- orig/src/runner_mouse.h	2026-11-07 01:52:08.000000000 -0800
++++ /home/claude/work/src/runner_mouse.h	2026-11-07 12:18:23.501954888 -0800
+@@ -18,6 +18,9 @@
+ typedef struct RunnerMouseState {
+     int32_t x, y;
+     bool positionValid;
++    // True when the pointer is a touchscreen (3DS): there is no hover, so the
++    // pointer only exists while pressed and on the frame it is released.
++    bool touchOnly;
+     bool buttonDown[MOUSE_BUTTON_COUNT];
+     bool buttonDownPrev[MOUSE_BUTTON_COUNT];
+     bool buttonPressed[MOUSE_BUTTON_COUNT];
